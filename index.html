@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票筛选工具</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet">
+    <style>
+        body::-webkit-scrollbar {
+            display: none;
+        }
+        body { padding: 20px; }
+        .form-group { margin-bottom: 1rem; }
+        #resultTable { margin-top: 20px; }
+        .loading { display: none; }
+        .date-range-container { display: flex; gap: 1rem; align-items: center; }
+        .settings-container { 
+            display: flex; 
+            gap: 1rem; 
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .sortable { 
+            cursor: pointer; 
+            user-select: none;
+        }
+        .sortable:hover {
+            background-color: #f8f9fa;
+        }
+        .sortable::after {
+            content: '↕';
+            margin-left: 5px;
+            opacity: 0.3;
+        }
+        .sortable.asc::after {
+            content: '↑';
+            opacity: 1;
+        }
+        .sortable.desc::after {
+            content: '↓';
+            opacity: 1;
+        }
+        .stats {
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        .collapse-header {
+            cursor: pointer;
+            user-select: none;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .collapse-header:hover {
+            background-color: #e9ecef;
+        }
+        .collapse-icon::after {
+            content: '▼';
+            margin-left: 10px;
+            transition: transform 0.3s;
+        }
+        .collapse-icon.collapsed::after {
+            content: '▶';
+        }
+        .search-form-container {
+            transition: max-height 0.3s ease-out;
+            overflow: hidden;
+        }
+        .search-form-container.collapsed {
+            max-height: 0;
+        }
+        .search-form-container:not(.collapsed) {
+            max-height: 1000px;
+        }
+        
+        /* 虚拟滚动相关样式 */
+        .virtual-table-container {
+            position: relative;
+            height: 430px;
+            overflow: auto;
+            contain: strict;
+            will-change: transform;
+            border: 1px solid #dee2e6;
+            margin-top: 20px;
+            width: 100%;
+        }
+        
+        .virtual-table-header {
+            position: sticky;
+            top: 0;
+            background: #f8f9fa;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: 60px var(--date-width, 180px) 120px minmax(150px, 1fr) 120px 100px 50px;
+            gap: 1px;
+            border-bottom: 2px solid #dee2e6;
+            font-weight: bold;
+        }
+        
+        .virtual-table-header > div,
+        .virtual-table-row > div {
+            padding: 8px;
+            background: white;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .virtual-table-row {
+            position: absolute;
+            width: 100%;
+            display: grid;
+            grid-template-columns: 60px var(--date-width, 180px) 120px minmax(150px, 1fr) 120px 100px 50px;
+            gap: 1px;
+            background: #f8f9fa;
+            transition: background-color 0.2s;
+            transform: translateY(var(--top-position));
+        }
+        
+        .virtual-table-row > div:nth-child(1),
+        .virtual-table-header > div:nth-child(1) {
+            text-align: center; /* 序号居中对齐 */
+        }
+        
+        .virtual-table-row > div:nth-child(5),
+        .virtual-table-row > div:nth-child(6),
+        .virtual-table-header > div:nth-child(5),
+        .virtual-table-header > div:nth-child(6) {
+            text-align: right; /* 涨幅和涨速右对齐 */
+            padding-right: 20px; /* 右侧留出更多空间 */
+        }
+        
+        .action-bar {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            width: 100%;
+        }
+        
+        .form-check-input {
+            cursor: pointer;
+            width: 3rem;
+            height: 1.5rem;
+            margin-top: 0;
+        }
+        
+        .form-check-label {
+            cursor: pointer;
+            margin-bottom: 0;
+        }
+        
+        #refreshInterval {
+            padding: 0.25rem 0.5rem;
+            text-align: center;
+        }
+        
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 4px;
+            z-index: 1000;
+        }
+        
+        /* 响应式布局样式 */
+        @media (max-width: 992px) {
+            .action-buttons-container {
+                flex-direction: row;
+                flex-wrap: wrap;
+                gap: 1rem;
+            }
+            
+            .action-group {
+                flex: 1 1 auto;
+            }
+            
+            .virtual-table-header,
+            .virtual-table-row {
+                grid-template-columns: 40px 120px 80px minmax(100px, 1fr) 80px 80px 30px;
+            }
+            
+            .virtual-table-header > div,
+            .virtual-table-row > div {
+                padding: 6px;
+                font-size: 0.9rem;
+            }
+            
+            .container {
+                padding-left: 5px;
+                padding-right: 5px;
+            }
+            
+            body {
+                padding: 10px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .action-buttons-container {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .action-group {
+                width: 100%;
+            }
+        }
+        
+        @media (max-width: 576px) {
+            .virtual-table-header,
+            .virtual-table-row {
+                grid-template-columns: 30px 100px 70px minmax(80px, 1fr) 70px 70px 0px;
+            }
+            
+            .virtual-table-header > div,
+            .virtual-table-row > div {
+                padding: 4px;
+                font-size: 0.8rem;
+            }
+            
+            .form-check-input {
+                width: 2.5rem;
+                height: 1.2rem;
+            }
+            
+            .form-check-label {
+                font-size: 0.9rem;
+            }
+            
+            #refreshInterval,
+            #notifyThreshold {
+                width: 60px !important;
+            }
+            
+            .date-range-container {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 class="mb-4">东方财富选股工具</h2>
+        
+        <!-- 操作按钮区域 -->
+        <div class="action-bar mb-3">
+            <div class="d-flex align-items-center flex-wrap gap-3 action-buttons-container">
+                <div class="d-flex align-items-center flex-wrap gap-3 action-group">
+                    <button type="button" class="btn btn-primary" id="queryButton">开始查询</button>
+                    <div class="form-check form-switch d-flex align-items-center gap-2">
+                        <input class="form-check-input" type="checkbox" id="autoRefresh">
+                        <label class="form-check-label" for="autoRefresh">自动刷新</label>
+                        <input type="number" class="form-control form-control-sm" id="refreshInterval" value="3" min="3" style="width: 80px;">
+                        <small class="text-muted">秒</small>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center flex-wrap gap-3 action-group">
+                    <div class="form-check form-switch d-flex align-items-center gap-2">
+                        <input class="form-check-input" type="checkbox" id="enableNotification">
+                        <label class="form-check-label" for="enableNotification">开启通知</label>
+                        <input type="number" class="form-control form-control-sm" id="notifyThreshold" value="3" min="0" step="0.1" style="width: 80px;">
+                        <small class="text-muted">涨速</small>
+                    </div>
+                    <button type="button" class="btn btn-outline-secondary" id="copyButton" disabled onclick="copyStockCodes()">复制股票代码</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="collapse-header" id="formToggle">
+            <span>查询设置</span>
+            <span class="collapse-icon"></span>
+        </div>
+        
+        <div class="search-form-container" id="searchFormContainer">
+            <form id="searchForm" class="mb-4">
+                <div class="form-group">
+                    <label for="cookie">Cookie:</label>
+                    <textarea class="form-control" id="cookie" rows="3" required></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="queryTemplate">查询条件 (使用{date}作为日期占位符):</label>
+                    <textarea class="form-control" id="queryTemplate" rows="3" required></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>选择日期区间:</label>
+                    <div class="date-range-container">
+                        <input type="text" class="form-control" id="startDate" placeholder="开始日期" required>
+                        <span>至</span>
+                        <input type="text" class="form-control" id="endDate" placeholder="结束日期" required>
+                    </div>
+                </div>
+            </form>
+        </div>
+        
+        <div class="loading">查询中...</div>
+        
+        <div class="stats">
+            总计: <span id="totalCount">0</span> 条记录
+        </div>
+
+        <!-- 新的虚拟滚动表格结构 -->
+        <div class="virtual-table-container" id="virtualTableContainer">
+            <div class="virtual-table-header">
+                <div>序号</div>
+                <div class="sortable" data-sort="date">日期</div>
+                <div>代码</div>
+                <div>名称</div>
+                <div class="sortable" data-sort="chg">涨幅(%)</div>
+                <div class="sortable" data-sort="zs">涨速</div>
+                <div></div>
+            </div>
+            <div class="virtual-table-content" id="virtualTableContent">
+                <!-- 动态内容将在这里渲染 -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/zh.js"></script>
+    
+    <script>
+        // 本地存储键
+        const STORAGE_KEYS = {
+            COOKIE: 'stockApp_cookie',
+            QUERY_TEMPLATE: 'stockApp_queryTemplate',
+            AUTO_REFRESH: 'stockApp_autoRefresh',
+            REFRESH_INTERVAL: 'stockApp_refreshInterval',
+            SORT_COLUMN: 'stockApp_sortColumn',
+            SORT_DIRECTION: 'stockApp_sortDirection',
+            FORM_COLLAPSED: 'stockApp_formCollapsed',
+            START_DATE: 'stockApp_startDate',
+            END_DATE: 'stockApp_endDate',
+            ENABLE_NOTIFICATION: 'stockApp_enableNotification',
+            NOTIFY_THRESHOLD: 'stockApp_notifyThreshold'
+        };
+
+        // 虚拟滚动配置
+        const ITEM_HEIGHT = 37; // 每行高度
+        const BUFFER_SIZE = 10; // 上下缓冲区行数
+        
+        // 当前数据和状态
+        let currentData = [];
+        let currentSort = {
+            column: localStorage.getItem(STORAGE_KEYS.SORT_COLUMN) || null,
+            direction: localStorage.getItem(STORAGE_KEYS.SORT_DIRECTION) || 'asc'
+        };
+        let refreshTimer = null;
+        let lastScrollPosition = 0;
+        let scrollTimeout = null;
+        let stockCodes = ''; // 用于存储股票代码
+
+        // 通知功能
+        const Notification = {
+            async requestPermission() {
+                if (!("Notification" in window)) {
+                    console.log("浏览器不支持通知功能");
+                    return false;
+                }
+                
+                if (Notification.permission !== "granted") {
+                    const permission = await window.Notification.requestPermission();
+                    return permission === "granted";
+                }
+                
+                return true;
+            },
+            
+            createNotification(stocks) {
+                // 生成通知内容，每只股票占一行
+                const notificationBody = stocks
+                    .map(stock => `${stock.name}(${stock.code}) 涨速: ${stock.zs}`)
+                    .join('\n');
+                
+                const notification = new window.Notification("股票涨速提醒", {
+                    body: notificationBody,
+                    tag: 'stock_notification',  // 使用固定tag，新通知会替换旧的
+                    renotify: true  // 即使tag相同也会再次提醒
+                });
+                
+                notification.onclick = () => {
+                    window.focus();
+                    notification.close();
+                };
+                
+                // 5秒后自动关闭
+                setTimeout(() => notification.close(), 5000);
+            },
+            
+            async notify(stocks) {
+                if (!await this.requestPermission()) return;
+                this.createNotification(stocks);
+            },
+            
+            async checkAndNotify(stocks) {
+                if (!document.getElementById('enableNotification').checked) return;
+                
+                const threshold = parseFloat(document.getElementById('notifyThreshold').value);
+                if (isNaN(threshold)) return;
+                
+                // 过滤出超过阈值的股票，并按涨速降序排序
+                const stocksToNotify = stocks
+                    .filter(stock => {
+                        const zs = parseFloat(stock.zs);
+                        return !isNaN(zs) && zs > threshold;
+                    })
+                    .sort((a, b) => parseFloat(b.zs) - parseFloat(a.zs));  // 按涨速降序排序
+                
+                // 如果有符合条件的股票，发送通知
+                if (stocksToNotify.length > 0) {
+                    await this.notify(stocksToNotify);
+                }
+            }
+        };
+
+        // 折叠状态控制
+        function toggleSearchForm() {
+            const container = document.getElementById('searchFormContainer');
+            const icon = document.querySelector('.collapse-icon');
+            const isCollapsed = container.classList.toggle('collapsed');
+            icon.classList.toggle('collapsed', isCollapsed);
+            
+            // 保存折叠状态
+            localStorage.setItem(STORAGE_KEYS.FORM_COLLAPSED, isCollapsed);
+        }
+
+        // 从本地存储加载数据
+        function loadFromStorage() {
+            document.getElementById('cookie').value = localStorage.getItem(STORAGE_KEYS.COOKIE) || '';
+            document.getElementById('queryTemplate').value = localStorage.getItem(STORAGE_KEYS.QUERY_TEMPLATE) || '';
+            document.getElementById('autoRefresh').checked = localStorage.getItem(STORAGE_KEYS.AUTO_REFRESH) === 'true';
+            document.getElementById('refreshInterval').value = localStorage.getItem(STORAGE_KEYS.REFRESH_INTERVAL) || '30';
+            document.getElementById('enableNotification').checked = localStorage.getItem(STORAGE_KEYS.ENABLE_NOTIFICATION) === 'true';
+            document.getElementById('notifyThreshold').value = localStorage.getItem(STORAGE_KEYS.NOTIFY_THRESHOLD) || '3';
+            
+            // 加载日期区间
+            const savedStartDate = localStorage.getItem(STORAGE_KEYS.START_DATE);
+            const savedEndDate = localStorage.getItem(STORAGE_KEYS.END_DATE);
+            if (savedStartDate) document.getElementById('startDate')._flatpickr.setDate(savedStartDate);
+            if (savedEndDate) document.getElementById('endDate')._flatpickr.setDate(savedEndDate);
+            
+            // 恢复排序状态
+            if (currentSort.column) {
+                const header = document.querySelector(`[data-sort="${currentSort.column}"]`);
+                if (header) {
+                    header.classList.add(currentSort.direction);
+                }
+            }
+
+            // 恢复折叠状态
+            const isCollapsed = localStorage.getItem(STORAGE_KEYS.FORM_COLLAPSED) === 'true';
+            if (isCollapsed) {
+                const container = document.getElementById('searchFormContainer');
+                const icon = document.querySelector('.collapse-icon');
+                container.classList.add('collapsed');
+                icon.classList.add('collapsed');
+            }
+        }
+
+        // 保存数据到本地存储
+        function saveToStorage() {
+            localStorage.setItem(STORAGE_KEYS.COOKIE, document.getElementById('cookie').value);
+            localStorage.setItem(STORAGE_KEYS.QUERY_TEMPLATE, document.getElementById('queryTemplate').value);
+            localStorage.setItem(STORAGE_KEYS.AUTO_REFRESH, document.getElementById('autoRefresh').checked);
+            localStorage.setItem(STORAGE_KEYS.REFRESH_INTERVAL, document.getElementById('refreshInterval').value);
+            localStorage.setItem(STORAGE_KEYS.START_DATE, document.getElementById('startDate').value);
+            localStorage.setItem(STORAGE_KEYS.END_DATE, document.getElementById('endDate').value);
+            localStorage.setItem(STORAGE_KEYS.ENABLE_NOTIFICATION, document.getElementById('enableNotification').checked);
+            localStorage.setItem(STORAGE_KEYS.NOTIFY_THRESHOLD, document.getElementById('notifyThreshold').value);
+        }
+
+        // 保存排序状态
+        function saveSortState() {
+            localStorage.setItem(STORAGE_KEYS.SORT_COLUMN, currentSort.column || '');
+            localStorage.setItem(STORAGE_KEYS.SORT_DIRECTION, currentSort.direction);
+        }
+
+        // 初始化日期选择器
+        const dateConfig = {
+            locale: "zh",
+            dateFormat: "Y-m-d",
+            maxDate: "today"
+        };
+        
+        flatpickr("#startDate", {
+            ...dateConfig,
+            onChange: function(selectedDates) {
+                endDatePicker.set('minDate', selectedDates[0]);
+            }
+        });
+        
+        const endDatePicker = flatpickr("#endDate", {
+            ...dateConfig,
+            onChange: function(selectedDates) {
+                startDatePicker.set('maxDate', selectedDates[0]);
+            }
+        });
+
+        // 计算可见范围
+        function calculateVisibleRange(scrollTop, containerHeight) {
+            const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - BUFFER_SIZE);
+            const visibleItems = Math.ceil(containerHeight / ITEM_HEIGHT) + 2 * BUFFER_SIZE;
+            const endIndex = Math.min(currentData.length, startIndex + visibleItems);
+            return { startIndex, endIndex };
+        }
+
+        // 优化的排序函数
+        function optimizedSort(data, column, direction) {
+            const getSortValue = (item) => {
+                const value = item[column];
+                return column === 'chg' || column === 'zs' ? parseFloat(value) || 0 : value;
+            };
+            
+            return data
+                .map((item, index) => ({ item, sortValue: getSortValue(item), index }))
+                .sort((a, b) => {
+                    const diff = a.sortValue < b.sortValue ? -1 : a.sortValue > b.sortValue ? 1 : a.index - b.index;
+                    return direction === 'asc' ? diff : -diff;
+                })
+                .map(({ item }) => item);
+        }
+
+        // 计算日期列宽度
+        function calculateDateColumnWidth(data) {
+            if (!data || data.length === 0) return;
+            
+            // 创建临时元素来测量文本宽度
+            const temp = document.createElement('div');
+            temp.style.position = 'absolute';
+            temp.style.visibility = 'hidden';
+            temp.style.whiteSpace = 'nowrap';
+            temp.style.fontFamily = 'monospace';
+            temp.style.padding = '8px';
+            document.body.appendChild(temp);
+            
+            // 找出最长的日期文本
+            let maxWidth = 0;
+            data.forEach(stock => {
+                temp.textContent = stock.date;
+                maxWidth = Math.max(maxWidth, temp.offsetWidth);
+            });
+            
+            // 清理临时元素
+            document.body.removeChild(temp);
+            
+            // 添加一些padding，并设置为CSS变量
+            const finalWidth = maxWidth + 32; // 添加一些额外空间
+            document.documentElement.style.setProperty('--date-width', `${finalWidth}px`);
+        }
+
+        // 修改显示结果函数
+        function displayResults(data, resetSort = true) {
+            currentData = data;
+            document.getElementById('totalCount').textContent = data.length;
+            
+            // 计算日期列宽度
+            calculateDateColumnWidth(data);
+            
+            if (resetSort && currentSort.column) {
+                currentData = optimizedSort(currentData, currentSort.column, currentSort.direction);
+            }
+            
+            const container = document.getElementById('virtualTableContainer');
+            const content = document.getElementById('virtualTableContent');
+            
+            // 设置内容区域的总高度
+            content.style.height = `${currentData.length * ITEM_HEIGHT}px`;
+            
+            // 触发一次滚动事件来渲染初始内容
+            renderVisibleContent(container.scrollTop);
+        }
+
+        // 渲染可见内容
+        function renderVisibleContent(scrollTop) {
+            const container = document.getElementById('virtualTableContainer');
+            const content = document.getElementById('virtualTableContent');
+            const { startIndex, endIndex } = calculateVisibleRange(scrollTop, container.clientHeight);
+            
+            const fragment = document.createDocumentFragment();
+            
+            for (let i = startIndex; i < endIndex; i++) {
+                const stock = currentData[i];
+                if (!stock) continue;
+                
+                const row = document.createElement('div');
+                row.className = 'virtual-table-row';
+                row.style.setProperty('--top-position', `${i * ITEM_HEIGHT}px`);
+                
+                // 格式化数字，保留两位小数
+                const chg = parseFloat(stock.chg).toFixed(2);
+                const zs = stock.zs ? parseFloat(stock.zs).toFixed(2) : '-';
+                
+                row.innerHTML = `
+                    <div>${i + 1}</div>
+                    <div>${stock.date}</div>
+                    <div>${stock.code}</div>
+                    <div>${stock.name}</div>
+                    <div>${chg}</div>
+                    <div>${zs}</div>
+                    <div></div>
+                `;
+                
+                fragment.appendChild(row);
+            }
+            
+            content.innerHTML = '';
+            content.appendChild(fragment);
+        }
+
+        // 滚动处理
+        document.getElementById('virtualTableContainer').addEventListener('scroll', (e) => {
+            if (scrollTimeout) {
+                cancelAnimationFrame(scrollTimeout);
+            }
+            
+            scrollTimeout = requestAnimationFrame(() => {
+                renderVisibleContent(e.target.scrollTop);
+            });
+        }, { passive: true });
+
+        // 排序处理
+        function sortData(column) {
+            const headers = document.querySelectorAll('.sortable');
+            headers.forEach(header => {
+                if (header.dataset.sort !== column) {
+                    header.classList.remove('asc', 'desc');
+                }
+            });
+
+            const header = document.querySelector(`[data-sort="${column}"]`);
+            if (currentSort.column === column) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.column = column;
+                currentSort.direction = 'asc';
+            }
+
+            header.classList.remove('asc', 'desc');
+            header.classList.add(currentSort.direction);
+
+            // 保存排序状态
+            localStorage.setItem(STORAGE_KEYS.SORT_COLUMN, currentSort.column);
+            localStorage.setItem(STORAGE_KEYS.SORT_DIRECTION, currentSort.direction);
+
+            // 重新排序并显示
+            currentData = optimizedSort(currentData, column, currentSort.direction);
+            const container = document.getElementById('virtualTableContainer');
+            renderVisibleContent(container.scrollTop);
+        }
+
+        // 数据处理函数 - 合并重复股票的日期
+        function mergeDuplicateStocks(data) {
+            const stockMap = new Map();
+            
+            data.forEach(stock => {
+                const key = stock.code;
+                if (!stockMap.has(key)) {
+                    stockMap.set(key, {...stock, dates: [stock.date]});
+                } else {
+                    const existingStock = stockMap.get(key);
+                    if (!existingStock.dates.includes(stock.date)) {
+                        existingStock.dates.push(stock.date);
+                    }
+                }
+            });
+            
+            return Array.from(stockMap.values()).map(stock => ({
+                ...stock,
+                date: stock.dates.sort().join(' | '),
+                dates: undefined
+            }));
+        }
+        
+        // 修改表单提交处理
+        document.getElementById('queryButton').addEventListener('click', function() {
+            document.getElementById('searchForm').dispatchEvent(new Event('submit'));
+        });
+        
+        document.getElementById('searchForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const loading = document.querySelector('.loading');
+            const submitBtn = document.getElementById('queryButton');
+            const copyBtn = document.getElementById('copyButton');
+            
+            // 保存设置到本地存储
+            saveToStorage();
+            
+            // 显示加载状态
+            loading.style.display = 'block';
+            submitBtn.disabled = true;
+            
+            try {
+                const response = await fetch('/search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        cookie: document.getElementById('cookie').value,
+                        query_template: document.getElementById('queryTemplate').value,
+                        start_date: document.getElementById('startDate').value,
+                        end_date: document.getElementById('endDate').value
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // 合并重复股票数据
+                    const mergedData = mergeDuplicateStocks(result.data);
+                    // 提取并存储股票代码
+                    stockCodes = [...new Set(mergedData.map(stock => stock.code))].join('\n');
+                    copyBtn.disabled = !stockCodes;
+                    displayResults(mergedData, true);
+                    
+                    // 检查并发送通知
+                    await Notification.checkAndNotify(mergedData);
+                } else {
+                    console.error('查询失败: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                console.error('发生错误，请查看控制台');
+            } finally {
+                // 恢复按钮状态
+                loading.style.display = 'none';
+                submitBtn.disabled = false;
+            }
+        });
+
+        // 自动刷新控制
+        function handleAutoRefresh() {
+            clearInterval(refreshTimer);
+            if (document.getElementById('autoRefresh').checked) {
+                const interval = parseInt(document.getElementById('refreshInterval').value) * 1000;
+                refreshTimer = setInterval(() => {
+                    document.getElementById('queryButton').click();
+                }, interval);
+            }
+        }
+
+        // 初始化事件监听
+        document.querySelectorAll('.sortable').forEach(header => {
+            header.addEventListener('click', () => sortData(header.dataset.sort));
+        });
+
+        document.getElementById('autoRefresh').addEventListener('change', handleAutoRefresh);
+        document.getElementById('refreshInterval').addEventListener('change', handleAutoRefresh);
+        document.getElementById('formToggle').addEventListener('click', toggleSearchForm);
+
+        // 页面加载时从本地存储加载数据
+        loadFromStorage();
+        handleAutoRefresh();
+
+        // 复制股票代码
+        async function copyStockCodes() {
+            try {
+                await navigator.clipboard.writeText(stockCodes);
+                const copyBtn = document.getElementById('copyButton');
+                copyBtn.textContent = '复制成功';
+                copyBtn.classList.replace('btn-outline-secondary', 'btn-success');
+                setTimeout(() => {
+                    copyBtn.textContent = '复制股票代码';
+                    copyBtn.classList.replace('btn-success', 'btn-outline-secondary');
+                }, 2000);
+            } catch (err) {
+                console.error('复制失败:', err);
+            }
+        }
+
+        // 初始化事件监听
+        document.addEventListener('DOMContentLoaded', async function() {
+            // 请求通知权限
+            await Notification.requestPermission();
+            
+            // 保存通知设置
+            document.getElementById('enableNotification').addEventListener('change', saveToStorage);
+            document.getElementById('notifyThreshold').addEventListener('change', saveToStorage);
+        });
+    </script>
+</body>
+</html> 
