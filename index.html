@@ -275,6 +275,11 @@
                         <input type="number" class="form-control form-control-sm" id="notifyThreshold" value="3" min="0" step="0.1" style="width: 80px;">
                         <small class="text-muted">涨速</small>
                     </div>
+                    <!-- 新增：后台定时推送开关 -->
+                    <div class="form-check form-switch d-flex align-items-center gap-2">
+                        <input class="form-check-input" type="checkbox" id="enableBackgroundPush">
+                        <label class="form-check-label" for="enableBackgroundPush">开启后台定时推送</label>
+                    </div>
                     <button type="button" class="btn btn-outline-secondary" id="copyButton" disabled onclick="copyStockCodes()">复制股票代码</button>
                 </div>
             </div>
@@ -347,7 +352,8 @@
             START_DATE: 'stockApp_startDate',
             END_DATE: 'stockApp_endDate',
             ENABLE_NOTIFICATION: 'stockApp_enableNotification',
-            NOTIFY_THRESHOLD: 'stockApp_notifyThreshold'
+            NOTIFY_THRESHOLD: 'stockApp_notifyThreshold',
+            ENABLE_BACKGROUND_PUSH: 'stockApp_enableBackgroundPush'
         };
 
         // 虚拟滚动配置
@@ -447,6 +453,7 @@
             document.getElementById('refreshInterval').value = localStorage.getItem(STORAGE_KEYS.REFRESH_INTERVAL) || '30';
             document.getElementById('enableNotification').checked = localStorage.getItem(STORAGE_KEYS.ENABLE_NOTIFICATION) === 'true';
             document.getElementById('notifyThreshold').value = localStorage.getItem(STORAGE_KEYS.NOTIFY_THRESHOLD) || '3';
+            document.getElementById('enableBackgroundPush').checked = localStorage.getItem(STORAGE_KEYS.ENABLE_BACKGROUND_PUSH) === 'true';
             
             // 加载日期区间
             const savedStartDate = localStorage.getItem(STORAGE_KEYS.START_DATE);
@@ -482,6 +489,7 @@
             localStorage.setItem(STORAGE_KEYS.END_DATE, document.getElementById('endDate').value);
             localStorage.setItem(STORAGE_KEYS.ENABLE_NOTIFICATION, document.getElementById('enableNotification').checked);
             localStorage.setItem(STORAGE_KEYS.NOTIFY_THRESHOLD, document.getElementById('notifyThreshold').value);
+            localStorage.setItem(STORAGE_KEYS.ENABLE_BACKGROUND_PUSH, document.getElementById('enableBackgroundPush').checked);
         }
 
         // 保存排序状态
@@ -706,6 +714,7 @@
             submitBtn.disabled = true;
             
             try {
+                // 修改：在请求中包含后台推送相关设置
                 const response = await fetch('/search', {
                     method: 'POST',
                     headers: {
@@ -715,7 +724,11 @@
                         cookie: document.getElementById('cookie').value,
                         query_template: document.getElementById('queryTemplate').value,
                         start_date: document.getElementById('startDate').value,
-                        end_date: document.getElementById('endDate').value
+                        end_date: document.getElementById('endDate').value,
+                        // 新增：传递后台推送相关设置
+                        enableBackgroundPush: document.getElementById('enableBackgroundPush').checked,
+                        refreshInterval: parseInt(document.getElementById('refreshInterval').value),
+                        notifyThreshold: parseFloat(document.getElementById('notifyThreshold').value)
                     })
                 });
                 
@@ -792,6 +805,7 @@
             // 保存通知设置
             document.getElementById('enableNotification').addEventListener('change', saveToStorage);
             document.getElementById('notifyThreshold').addEventListener('change', saveToStorage);
+            document.getElementById('enableBackgroundPush').addEventListener('change', saveToStorage);
         });
     </script>
 </body>

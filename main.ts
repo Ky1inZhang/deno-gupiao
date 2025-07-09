@@ -9,12 +9,16 @@ class StockSearchError extends Error {
   }
 }
 
-// 定义搜索请求的接口
+// 修改：更新搜索请求接口，包含新增的参数
 interface SearchRequest {
   cookie: string;
   query_template: string;
   start_date: string;
   end_date: string;
+  // 新增：后台推送相关参数
+  enableBackgroundPush: boolean;
+  refreshInterval: number;
+  notifyThreshold: number;
 }
 
 // 在股票数据中查找带日期的字段
@@ -135,9 +139,9 @@ async function handleHome() {
 }
 
 // 处理搜索请求
-async function handleSearch(request: Request): Promise<Response> {
+async function handleSearch(requestData: SearchRequest): Promise<Response> {
   try {
-    const { cookie, query_template, start_date, end_date } = await request.json() as SearchRequest;
+    const { cookie, query_template, start_date, end_date } = requestData;
     const dates = getDateRange(start_date, end_date);
     console.log(`将查询以下日期: ${dates.map((d) => d.toISOString().split("T")[0])}`);
 
@@ -186,13 +190,82 @@ async function handleSearch(request: Request): Promise<Response> {
   }
 }
 
+// 新增：发送符合阈值的股票信息到指定接口
+async function pushStocksToApi(stocks: any[], threshold: number) {
+  const filteredStocks = stocks.filter(stock => {
+    const zs = parseFloat(stock.zs);
+    return !isNaN(zs) && zs > threshold;
+  });
+
+  if (filteredStocks.length > 0) {
+    const body = filteredStocks.map(stock => `${stock.name} ${stock.code} 涨幅: ${stock.chg} 涨速: ${stock.zs}`).join('\n');
+    try {
+      await fetch('https://ntfy.sh/lunchao', {
+        method: 'POST',
+        body
+      });
+      console.log('成功推送符合阈值的股票信息到指定接口');
+    } catch (error) {
+      console.error('推送股票信息到指定接口时出错:', error);
+    }
+  }
+}
+
+// 新增：后台定时任务
+let backgroundTaskTimer: number | null = null;
+async function startBackgroundTask(requestData: SearchRequest) {
+  if (backgroundTaskTimer) {
+    clearInterval(backgroundTaskTimer);
+  }
+
+  backgroundTaskTimer = setInterval(async () => {
+    try {
+      const dates = getDateRange(requestData.start_date, requestData.end_date);
+      const tasks = dates.map((date) => getStockList(date, requestData.cookie, requestData.query_template));
+      const results = await Promise.all(tasks);
+
+      const allStocks: any[] = [];
+      for (const result of results) {
+        if (result) {
+          allStocks.push(...result);
+        }
+      }
+
+      await pushStocksToApi(allStocks, requestData.notifyThreshold);
+    } catch (error) {
+      console.error('后台定时任务出错:', error);
+    }
+  }, requestData.refreshInterval * 1000);
+}
+
 // 主请求处理函数
 async function handler(request: Request): Promise<Response> {
   const { pathname } = new URL(request.url);
   if (pathname === "/") {
     return await handleHome();
   } else if (pathname === "/search") {
-    return await handleSearch(request);
+    try {
+      const requestData = await request.json() as SearchRequest;
+      
+      // 修改：直接从请求数据中获取后台推送设置，而不是从localStorage
+      if (requestData.enableBackgroundPush) {
+        startBackgroundTask(requestData);
+      } else {
+        // 如果关闭了推送，清除现有定时任务
+        if (backgroundTaskTimer) {
+          clearInterval(backgroundTaskTimer);
+          backgroundTaskTimer = null;
+        }
+      }
+
+      return await handleSearch(requestData);
+    } catch (error) {
+      console.error('解析请求体时出错:', error);
+      return new Response(JSON.stringify({ success: false, message: '解析请求体时出错' }), {
+        headers: { "Content-Type": "application/json" },
+        status: 400
+      });
+    }
   }
   return new Response("Not Found", { status: 404 });
 }
