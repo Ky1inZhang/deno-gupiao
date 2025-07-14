@@ -173,6 +173,19 @@
             border-radius: 4px;
             z-index: 1000;
         }
+        .error-tip {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(220,53,69,0.95);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 4px;
+            z-index: 1001;
+            font-size: 1.1rem;
+        }
         
         /* 响应式布局样式 */
         @media (max-width: 992px) {
@@ -314,6 +327,7 @@
         </div>
         
         <div class="loading">查询中...</div>
+        <div class="error-tip"></div>
         
         <div class="stats">
             总计: <span id="totalCount">0</span> 条记录
@@ -746,6 +760,13 @@
                     await Notification.checkAndNotify(mergedData);
                 } else {
                     console.error('查询失败: ' + result.message);
+                    // 新增：显示自动消失的错误/无数据提示，不影响.loading
+                    const errorTip = document.querySelector('.error-tip');
+                    errorTip.textContent = result.message || '未获取到数据';
+                    errorTip.style.display = 'block';
+                    setTimeout(() => {
+                        errorTip.style.display = 'none';
+                    }, 2000);
                 }
             } catch (error) {
                 console.error('Error:', error);

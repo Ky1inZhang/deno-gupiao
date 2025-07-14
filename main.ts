@@ -192,13 +192,23 @@ async function handleSearch(requestData: SearchRequest): Promise<Response> {
 
 // 新增：发送符合阈值的股票信息到指定接口
 async function pushStocksToApi(stocks: any[], threshold: number) {
+  // 先筛选符合阈值的股票
   const filteredStocks = stocks.filter(stock => {
     const zs = parseFloat(stock.zs);
     return !isNaN(zs) && zs > threshold;
   });
 
-  if (filteredStocks.length > 0) {
-    const body = filteredStocks.map(stock => `${stock.name} ${stock.code} 涨幅: ${stock.chg} 涨速: ${stock.zs}`).join('\n');
+  // 按股票代码去重，只保留每个代码的第一条
+  const uniqueStocksMap = new Map();
+  for (const stock of filteredStocks) {
+    if (!uniqueStocksMap.has(stock.code)) {
+      uniqueStocksMap.set(stock.code, stock);
+    }
+  }
+  const uniqueStocks = Array.from(uniqueStocksMap.values());
+
+  if (uniqueStocks.length > 0) {
+    const body = uniqueStocks.map(stock => `${stock.name} ${stock.code} 涨幅: ${stock.chg} 涨速: ${stock.zs}`).join('\n');
     try {
       await fetch('https://ntfy.sh/lunchao', {
         method: 'POST',
