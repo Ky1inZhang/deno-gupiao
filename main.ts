@@ -56,8 +56,8 @@ async function getStockList(date: Date, cookie: string, queryTemplate: string): 
   }
 
   // 替换日期占位符
-  const formattedDate = `${date.getMonth() + 1}月${date.getDate()}日`;
-  const keyword = queryTemplate.replace("{date}", formattedDate);
+  const formattedDate = date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }).replace('/', '月').replace('/', '月') + '日';
+  const keyword = queryTemplate.replaceAll("{date}", formattedDate);
 
   const url = "https://np-tjxg-b.eastmoney.com/api/smart-tag/stock/v3/pw/search-code";
 
