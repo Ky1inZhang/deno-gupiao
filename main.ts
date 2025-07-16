@@ -120,13 +120,16 @@ async function getStockList(date: Date, cookie: string, queryTemplate: string): 
         });
         return stockInfo;
       } else {
-        throw new StockSearchError(`接口返回错误: ${result.msg}`);
+        console.error(`接口返回错误: ${result.msg}`);
+        return [];
       }
     } else {
-      throw new StockSearchError(`请求失败，状态码: ${response.status}`);
+      console.error(`请求失败，状态码: ${response.status}`);
+      return [];
     }
   } catch (error) {
-    throw new StockSearchError(`发生错误: ${error.message}`);
+    console.error(`发生错误: ${error.message}`);
+    return [];
   }
 }
 
