@@ -208,7 +208,8 @@ async function pushStocksToApi(stocks: any[], threshold: number) {
       uniqueStocksMap.set(stock.code, stock);
     }
   }
-  const uniqueStocks = Array.from(uniqueStocksMap.values());
+  // 按涨速降序排序
+  const uniqueStocks = Array.from(uniqueStocksMap.values()).sort((a, b) => parseFloat(b.zs) - parseFloat(a.zs));
 
   if (uniqueStocks.length > 0) {
     const body = uniqueStocks.map(stock => `${stock.name} ${stock.code} 涨幅: ${stock.chg} 涨速: ${stock.zs}`).join('\n');
